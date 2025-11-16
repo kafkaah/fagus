@@ -19,7 +19,7 @@ Fagus est un outil en ligne de commande conçu pour envoyer des notifications pa
 
 2.  **Rendez le lanceur exécutable :**
     ```bash
-    chmod +x fagus.sh
+    chmod u+x fagus.sh
     ```
 
 ## Configuration
