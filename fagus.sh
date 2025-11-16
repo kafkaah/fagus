@@ -5,8 +5,58 @@
 # Orchestre le téléchargement, la mise en cache et l'exécution du mailer.
 # ==============================================================================
 
+# --- Fonction d'aide ---
+# Affiche l'aide et quitte le script.
+show_help() {
+cat << EOF
+Fagus - Un système de notification par e-mail simple et robuste.
+
+Cet outil envoie un message (ou le contenu d'un fichier) par e-mail via une
+API Google Apps Script configurée localement.
+
+USAGE:
+  fagus.sh <message_source> [subsystem] [cooldown_minutes]
+  fagus.sh --help | -h
+
+ARGUMENTS:
+  <message_source>    Le message à envoyer, entre guillemets, ou le chemin
+                        vers un fichier texte (relatif ou absolu). Requis.
+
+  [subsystem]           Un nom de sous-système optionnel qui sera ajouté au
+                        sujet de l'e-mail. Ex: "Backup Error".
+
+  [cooldown_minutes]    Optionnel. Durée en minutes avant qu'un nouvel e-mail
+                        puisse être envoyé.
+                        Défaut : 60 minutes.
+                        Mettre à 0 pour désactiver la limitation et forcer l'envoi.
+
+OPTIONS:
+  -h, --help            Affiche cette aide et quitte.
+
+CONFIGURATION:
+  Le script requiert un fichier 'fagus.conf' dans le même répertoire, contenant
+  les variables PASSWORD, API_URL_ID, et ORIGIN.
+
+EXEMPLES:
+  # Envoyer un message simple:
+  ./fagus.sh "Le script de nuit est terminé."
+
+  # Envoyer un log d'erreur avec un sous-système:
+  ./fagus.sh /var/log/backup.log "Backup Error"
+
+  # Forcer l'envoi d'un message urgent sans limitation de débit:
+  ./fagus.sh "Alerte: Espace disque critique !" "Urgent" 0
+EOF
+}
+
+# --- Traitement des options d'aide ---
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+  show_help
+  exit 0
+fi
+
 # --- Détermination du chemin du script ---
-# Cette section détermine le répertoire absolu où se trouve le script.
+# ... (le reste du script est identique) ...
 SOURCE=${BASH_SOURCE[0]}
 while [ -L "$SOURCE" ]; do
   DIR=$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )
@@ -54,21 +104,15 @@ if [[ "$PASSWORD" == "CHANGEME" || "$API_URL_ID" == "CHANGEME" ]]; then
 fi
 
 # --- Normalisation des paramètres ---
-# Sauvegarde du répertoire de travail actuel de l'utilisateur
 ORIGINAL_PWD=$(pwd)
-
-# Convertit le premier paramètre (source du message) en chemin absolu s'il s'agit d'un fichier.
 MESSAGE_SOURCE=$1
 if [ -f "$MESSAGE_SOURCE" ]; then
-  # On se place temporairement dans le répertoire d'appel pour résoudre le chemin
   cd "$ORIGINAL_PWD" || exit 1
-  # readlink -f garantit un chemin absolu et canonique
   MESSAGE_SOURCE=$(readlink -f "$MESSAGE_SOURCE")
 fi
 
-# --- Mise à jour du script de base (logique de cache) ---
+# --- Mise à jour du script de base ---
 echo "Vérification de la version du mailer centralisé..."
-# On se place dans le répertoire du script pour que les fichiers soient au bon endroit
 cd "$DIR" || exit 1
 if curl -s -f -o "${CORE_SCRIPT}.tmp" "$GIST_RAW_URL"; then
   mv "${CORE_SCRIPT}.tmp" "$CORE_SCRIPT"
@@ -84,14 +128,10 @@ if [ ! -f "$CORE_SCRIPT" ]; then
   exit 1
 fi
 
-# Applique les permissions de sécurité (utilisateur seul)
 chmod u+x "$CORE_SCRIPT"
 
-# Exporte les variables pour qu'elles soient visibles par le script enfant
 export API_URL="https://script.google.com/macros/s/${API_URL_ID}/exec"
 export PASSWORD
 export ORIGIN
 
-# Exécute le script en utilisant son chemin absolu, en lui passant le chemin
-# (maintenant absolu) de la source du message, et les autres paramètres.
 "$CORE_SCRIPT" "$MESSAGE_SOURCE" "$2" "$3"
